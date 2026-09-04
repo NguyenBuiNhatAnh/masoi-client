@@ -1,7 +1,19 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { socket } from './socket';
 
-const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+const ICE_SERVERS = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+    },
+    {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+    },
+];
 
 export function useVoiceChat(username, peerUsernames) {
     const [micOn, setMicOn] = useState(false);
@@ -44,12 +56,18 @@ export function useVoiceChat(username, peerUsernames) {
         };
 
         pc.onconnectionstatechange = () => {
-            if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) {
+            if (pc.connectionState === 'failed') {
+                try { pc.restartIce(); } catch (e) { }
+            }
+            if (['failed', 'closed'].includes(pc.connectionState)) {
                 setRemoteStreams((prev) => {
                     const copy = { ...prev };
                     delete copy[peerUsername];
                     return copy;
                 });
+                if (peersRef.current[peerUsername]?.pc === pc) {
+                    delete peersRef.current[peerUsername];
+                }
             }
         };
 
