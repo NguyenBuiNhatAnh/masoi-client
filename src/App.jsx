@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { socket } from './socket';
+import { useVoiceChat } from './useVoiceChat';
 
 const SPECIAL_ROLES = [
   { key: 'cursed', label: 'Kẻ bị nguyền rủa' },
@@ -59,6 +60,7 @@ export default function App() {
   const [executeResult, setExecuteResult] = useState(null);
   const [gameOver, setGameOver] = useState(null);
   const [banner, setBanner] = useState('');
+  const { micOn, toggleMic, remoteStreams, voiceOn } = useVoiceChat(username, lobby.users);
 
   // witch sub-state
   const [witchChoice, setWitchChoice] = useState(null); // 'heal' | 'kill' | null
@@ -178,6 +180,12 @@ export default function App() {
     socket.emit('login', { username: u });
   }, [loginInput]);
 
+  const doLogout = useCallback(() => {
+    localStorage.removeItem('masoi_username');
+    socket.disconnect();
+    window.location.reload();
+  }, []);
+
   const toggleSpecial = (key) => {
     setCfgSpecial((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   };
@@ -222,6 +230,7 @@ export default function App() {
       <div className="app-shell">
         <div className="topbar">
           <span>Xin chào, <b>{username}</b>{isHost && <span className="host-badge">Chủ phòng</span>}</span>
+          <button className="logout-btn" onClick={doLogout}>Đăng xuất</button>
         </div>
         <div className="card">
           <h2 className="section-title">Người chơi ({Object.values(lobby.online).filter(Boolean).length}/8)</h2>
@@ -232,6 +241,7 @@ export default function App() {
               </div>
             ))}
           </div>
+          <VoiceBar micOn={micOn} toggleMic={toggleMic} voiceOn={voiceOn} username={username} remoteStreams={remoteStreams} />
         </div>
 
         {isHost ? (
@@ -283,7 +293,10 @@ export default function App() {
       return (
         <div className="app-shell">
           <div className="card center-text">
+            <VoiceBar micOn={micOn} toggleMic={toggleMic} voiceOn={voiceOn} username={username} remoteStreams={remoteStreams} />
             <h1 className="title">{gameOver.winner === 'wolves' ? '🐺 Phe Ma Sói thắng!' : '🛡️ Phe Dân làng thắng!'}</h1>
+            {isHost && <button className="primary-btn" onClick={resetGame}>Chơi lại từ đầu</button>}
+            <button className="logout-btn" onClick={doLogout}>Đăng xuất</button>
             <h3 className="section-title">Vai trò của mọi người</h3>
             <div className="reveal-list">
               {Object.entries(gameOver.reveal).map(([u, info]) => (
@@ -308,7 +321,10 @@ export default function App() {
         <div className="topbar">
           <span>{username}{iAmDead && <span className="dead-badge">Đã chết</span>}</span>
           <span>{phase.status === 'night' ? `🌙 Đêm ${phase.round}` : phase.status === 'day_vote' ? `☀️ Ngày ${phase.round} - Bỏ phiếu` : phase.status === 'day_execute' ? `⚖️ Ngày ${phase.round} - Xử tử` : ''}</span>
+          <button className="logout-btn" onClick={doLogout}>Đăng xuất</button>
         </div>
+
+        <VoiceBar micOn={micOn} toggleMic={toggleMic} voiceOn={voiceOn} username={username} remoteStreams={remoteStreams} />
 
         {myRole && (
           <div className="card role-card">
@@ -378,6 +394,29 @@ export default function App() {
   }
 
   return null;
+}
+
+function VoiceBar({ micOn, toggleMic, voiceOn, username, remoteStreams }) {
+  const speaking = Object.entries(voiceOn).filter(([u, on]) => on && u !== username);
+  return (
+    <>
+      <div className="voice-bar">
+        <button className={`mic-btn${micOn ? ' mic-on' : ''}`} onClick={toggleMic}>
+          {micOn ? '🎤 Đang bật mic (bấm để tắt)' : '🔇 Bật mic'}
+        </button>
+        {speaking.length > 0 && (
+          <span className="voice-speaking">Đang nói: {speaking.map(([u]) => u).join(', ')}</span>
+        )}
+      </div>
+      {Object.entries(remoteStreams).map(([user, stream]) => (
+        <audio
+          key={user}
+          autoPlay
+          ref={(el) => { if (el && el.srcObject !== stream) el.srcObject = stream; }}
+        />
+      ))}
+    </>
+  );
 }
 
 function NightTurnPanel({ turn, witchChoice, setWitchChoice, wolfVotes, username, seerResult }) {
