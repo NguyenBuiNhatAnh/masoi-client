@@ -2,17 +2,22 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { socket } from './socket';
 
 const ICE_SERVERS = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    {
-        urls: 'turn:openrelay.metered.ca:80',
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
-    },
-    {
-        urls: 'turn:openrelay.metered.ca:443',
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
-    },
+  { urls: 'stun:stun.l.google.com:19302' },
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
 ];
 
 export function useVoiceChat(username, peerUsernames) {
@@ -56,6 +61,7 @@ export function useVoiceChat(username, peerUsernames) {
         };
 
         pc.onconnectionstatechange = () => {
+            console.log(`[voice] ${username} <-> ${peerUsername}:`, pc.connectionState);
             if (pc.connectionState === 'failed') {
                 try { pc.restartIce(); } catch (e) { }
             }
