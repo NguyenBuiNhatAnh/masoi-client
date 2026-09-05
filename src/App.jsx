@@ -50,6 +50,7 @@ export default function App() {
   const [phase, setPhase] = useState({ status: null, round: 1, aliveCount: 8 });
   const [turn, setTurn] = useState(null); // payload for own turn, or null
   const [deadSet, setDeadSet] = useState(new Set());
+  const [gamePlayers, setGamePlayers] = useState([]); // danh sách người chơi thực tế của ván hiện tại (có thể ít hơn 8)
   const [wolfVotes, setWolfVotes] = useState({});
   const [seerResult, setSeerResult] = useState(null);
   const [privateMsg, setPrivateMsg] = useState(null); // cursed_converted / doppel_inherit banners
@@ -85,7 +86,8 @@ export default function App() {
         setScreen((s) => (s === 'login' ? s : 'lobby'));
       }
     };
-    const onGameStarted = () => {
+    const onGameStarted = (d) => {
+      setGamePlayers(Array.isArray(d?.players) ? d.players : []);
       setScreen('game');
       setDeadSet(new Set());
       setGameOver(null);
@@ -245,7 +247,8 @@ export default function App() {
   }
 
   if (screen === 'lobby') {
-    const allOnline = lobby.users.length > 0 && lobby.users.every((u) => lobby.online[u]);
+    const onlineCount = Object.values(lobby.online).filter(Boolean).length;
+    const enoughOnline = onlineCount >= 3;
     return (
       <div className="app-shell">
         <div className="topbar">
@@ -294,8 +297,8 @@ export default function App() {
                 {' '}{lobby.config.enabledSpecialRoles.length} vai trò đặc biệt được bật.
               </div>
             )}
-            <button className="primary-btn" disabled={!allOnline || !lobby.config} onClick={startGame}>
-              {allOnline ? 'Bắt đầu ván đấu' : 'Đang chờ đủ 8 người online...'}
+            <button className="primary-btn" disabled={!enoughOnline || !lobby.config} onClick={startGame}>
+              {enoughOnline ? 'Bắt đầu ván đấu' : `Cần tối thiểu 3 người online (đang có ${onlineCount})`}
             </button>
           </div>
         ) : (
@@ -332,7 +335,7 @@ export default function App() {
       );
     }
 
-    const alive = lobby.users.filter((u) => !deadSet.has(u));
+    const alive = gamePlayers.filter((u) => !deadSet.has(u));
     const isMyTurn = turn && phase.status === 'night';
     const iAmDead = deadSet.has(username);
 
@@ -403,7 +406,7 @@ export default function App() {
         <div className="card players-status-card">
           <h3 className="section-title">Người chơi còn sống ({alive.length})</h3>
           <div className="player-grid small">
-            {lobby.users.map((u) => (
+            {gamePlayers.map((u) => (
               <div key={u} className={`status-chip ${deadSet.has(u) ? 'dead' : 'alive'}`}>{u}</div>
             ))}
           </div>
