@@ -79,7 +79,11 @@ export default function App() {
     const onLobbyUpdate = (data) => {
       setLobby(data);
       setIsHost(data.hostUsername === username || data.hostUsername === localStorage.getItem('masoi_username'));
-      if (data.gameStarted) setScreen((s) => (s === 'login' ? s : 'game'));
+      if (data.gameStarted) {
+        setScreen((s) => (s === 'login' ? s : 'game'));
+      } else {
+        setScreen((s) => (s === 'login' ? s : 'lobby'));
+      }
     };
     const onGameStarted = () => {
       setScreen('game');
@@ -98,7 +102,7 @@ export default function App() {
       setWitchChoice(null);
       if (p.status === 'night') { setDayVote(null); setDayVoteResult(null); setExecuteVote(null); setExecuteResult(null); }
     };
-    const onYourTurn = (t) => { setTurn(t); if (t.step === 'wolves') setWolfVotes(t.votes || {}); };
+    const onYourTurn = (t) => { setTurn(t); setWitchChoice(null); if (t.step === 'wolves') setWolfVotes(t.votes || {}); };
     const onWolfVoteUpdate = (d) => setWolfVotes(d.votes || {});
     const onSeerResult = (r) => setSeerResult(r);
     const onCursedConverted = (m) => setPrivateMsg({ type: 'cursed', message: m.message });
@@ -115,6 +119,9 @@ export default function App() {
     };
     const onGameOver = (d) => setGameOver(d);
     const onErrorMessage = (e) => { setBanner(e.message); setTimeout(() => setBanner(''), 3500); };
+    const onGameSnapshot = (d) => {
+      if (Array.isArray(d.deadPlayers)) setDeadSet(new Set(d.deadPlayers));
+    };
 
     socket.on('login_result', onLoginResult);
     socket.on('lobby_update', onLobbyUpdate);
@@ -135,6 +142,7 @@ export default function App() {
     socket.on('execute_result', onExecuteResultEv);
     socket.on('game_over', onGameOver);
     socket.on('error_message', onErrorMessage);
+    socket.on('game_snapshot', onGameSnapshot);
 
     return () => {
       socket.off('login_result', onLoginResult);
@@ -156,6 +164,7 @@ export default function App() {
       socket.off('execute_result', onExecuteResultEv);
       socket.off('game_over', onGameOver);
       socket.off('error_message', onErrorMessage);
+      socket.off('game_snapshot', onGameSnapshot);
     };
   }, [username]);
 
@@ -165,12 +174,18 @@ export default function App() {
     }
   }, [nightSummary]);
 
-  // Auto-relogin if we already have a username stored (page refresh)
+  // Tự đăng nhập lại mỗi khi socket connect/reconnect (kể cả reconnect ngầm do mất mạng,
+  // app bị đưa xuống nền trên điện thoại...), không chỉ lúc mount trang lần đầu.
+  // Nếu không có cái này, sau khi reconnect ngầm server vẫn map username -> socket.id CŨ,
+  // dẫn tới các emit riêng cho user (vd: your_turn) bị gửi vào socket chết, người chơi
+  // không thấy lượt của mình.
   useEffect(() => {
-    const saved = localStorage.getItem('masoi_username');
-    if (saved) {
-      socket.emit('login', { username: saved });
-    }
+    const onConnect = () => {
+      const saved = localStorage.getItem('masoi_username');
+      if (saved) socket.emit('login', { username: saved });
+    };
+    socket.on('connect', onConnect);
+    return () => socket.off('connect', onConnect);
   }, []);
 
   const doLogin = useCallback((name) => {
@@ -200,6 +215,11 @@ export default function App() {
 
   const startGame = () => socket.emit('host_start_game');
   const resetGame = () => socket.emit('host_reset_game');
+  const endGame = () => {
+    if (window.confirm('Kết thúc ván đấu hiện tại cho tất cả mọi người? Có thể chơi lại ngay sau đó.')) {
+      socket.emit('host_end_game');
+    }
+  };
 
   // ---------------- RENDER ----------------
   if (screen === 'login') {
@@ -321,6 +341,7 @@ export default function App() {
         <div className="topbar">
           <span>{username}{iAmDead && <span className="dead-badge">Đã chết</span>}</span>
           <span>{phase.status === 'night' ? `🌙 Đêm ${phase.round}` : phase.status === 'day_vote' ? `☀️ Ngày ${phase.round} - Bỏ phiếu` : phase.status === 'day_execute' ? `⚖️ Ngày ${phase.round} - Xử tử` : ''}</span>
+          {isHost && <button className="logout-btn" onClick={endGame}>Kết thúc ván</button>}
           <button className="logout-btn" onClick={doLogout}>Đăng xuất</button>
         </div>
 
@@ -505,7 +526,9 @@ function NightTurnPanel({ turn, witchChoice, setWitchChoice, wolfVotes, username
           <div className="witch-actions">
             {turn.canHeal && <button className="secondary-btn" onClick={() => setWitchChoice('heal')}>Dùng bình Cứu</button>}
             {turn.canKill && <button className="secondary-btn" onClick={() => setWitchChoice('kill')}>Dùng bình Giết</button>}
-            <button className="secondary-btn" onClick={() => send('action_witch', { type: 'pass' })}>Không làm gì</button>
+            <button className="secondary-btn" onClick={() => send('action_witch', { type: 'pass' })}>
+              {turn.usedAny ? 'Xong, kết thúc lượt' : 'Không làm gì'}
+            </button>
           </div>
         )}
         {witchChoice && (
